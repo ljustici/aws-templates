@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create autoscaling group
+
+Parameters:
+  LaunchTemplateVersionNumber:
+    Default: 1
+    Type: String
+
+  NetworkStackName:
+    Type: String
+    Description: Stack name
+    Default: caso6-1
+
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Open HTTP (port 80) and SSH (port 22)
+      VpcId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPC"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  LaunchTemplate:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
+      LaunchTemplateData:
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups:
+              - !Ref InstanceSecurityGroup
+            DeleteOnTermination: true
+        Placement:
+          Tenancy: default
+        ImageId: ami-0022f774911c1d690
+        InstanceType: t2.micro
+        UserData:
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash
+              yum update -y
+              sudo amazon-linux-extras install nginx1 -y 
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: '2'
+      MaxSize: '4'
+      DesiredCapacity: '2'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !Ref LaunchTemplateVersionNumber
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PublicSubnet1"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PublicSubnet2"
